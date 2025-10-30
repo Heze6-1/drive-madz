@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Drive Madz</title>
+<style>
+html, body { margin:0; padding:0; overflow:hidden; background:#87ceeb; }
+canvas { display:block; background:#87ceeb; }
+#touchControls { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+display: flex; gap: 10px; z-index:10; }
+.btn { width: 60px; height: 60px; background:rgba(255,255,255,0.6); border-radius: 10px;
+text-align:center; line-height:60px; font-weight:bold; font-size:20px; user-select:none; }
+#startScreen { position: fixed; top:0; left:0; width:100%; height:100%;
+background:#87ceeb; display:flex; flex-direction:column;
+justify-content:center; align-items:center; z-index:100; }
+#startScreen h1 { font-size:40px; color:#000; margin-bottom:20px; text-align:center; }
+#startScreen button { font-size:24px; padding:15px 30px; cursor:pointer; }
+</style>
+</head>
+<body>
+<div id="startScreen">
+<h1>This was made by Hezekiah</h1>
+<button id="startButton">Start Game</button>
+</div>
+
+<canvas id="gameCanvas"></canvas>
+
+<div id="touchControls">
+<div class="btn" id="leftBtn">◀</div>
+<div class="btn" id="rightBtn">▶</div>
+<div class="btn" id="upBtn">▲</div>
+<div class="btn" id="boostBtn">E</div>
+</div>
+
+<audio id="bgMusic" loop>
+<source src="https://cdn.pixabay.com/download/audio/2021/08/04/audio_6d1335755b.mp3?filename=happy-driving-112986.mp3" type="audio/mpeg">
+</audio>
+<audio id="engineSound" loop>
+<source src="https://cdn.pixabay.com/download/audio/2022/03/15/audio_f112bde129.mp3?filename=engine-acceleration-6383.mp3" type="audio/mpeg">
+</audio>
+
+<script>
+const startScreen = document.getElementById('startScreen');
+const startButton = document.getElementById('startButton');
+startButton.addEventListener('click', () => {
+  startScreen.style.display = 'none';
+  startGame();
+});
+
+function startGame(){
+  const canvas=document.getElementById('gameCanvas'); const ctx=canvas.getContext('2d');
+  let width=window.innerWidth; let height=window.innerHeight; canvas.width=width; canvas.height=height;
+  window.addEventListener('resize',()=>{ width=window.innerWidth; height=window.innerHeight; canvas.width=width; canvas.height=height; });
+
+  const keys={}; document.addEventListener('keydown',e=>keys[e.key.toLowerCase()]=true);
+  document.addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+
+  const leftBtn=document.getElementById('leftBtn'); const rightBtn=document.getElementById('rightBtn');
+  const upBtn=document.getElementById('upBtn'); const boostBtn=document.getElementById('boostBtn');
+  [leftBtn,rightBtn,upBtn,boostBtn].forEach(btn=>{
+    btn.addEventListener('touchstart',e=>{e.preventDefault(); if(btn===leftBtn)keys['arrowleft']=true;
+    if(btn===rightBtn)keys['arrowright']=true; if(btn===upBtn)keys['arrowup']=true; if(btn===boostBtn)keys['e']=true; });
+    btn.addEventListener('touchend',e=>{e.preventDefault(); if(btn===leftBtn)keys['arrowleft']=false;
+    if(btn===rightBtn)keys['arrowright']=false; if(btn===upBtn)keys['arrowup']=false; if(btn===boostBtn)keys['e']=false;});
+  });
+
+  let level=1; let car={x:100,y:300,vx:0,vy:0,width:80,height:40,onGround:false,wheelAngle:0};
+  let boostActive=false; let boostUsed=false; let boostTimer=0; let terrain=[]; let checkpoints=[];
+  const gravity=0.5; let cameraX=0;
+  const bgMusic=document.getElementById('bgMusic'); const engineSound=document.getElementById('engineSound');
+  bgMusic.volume=0.4; engineSound.volume=0.5; bgMusic.play();
+
+  function generateTerrain(level){
+    terrain=[]; checkpoints=[]; let lastX=0; let lastY=height-100;
+    for(let i=0;i<level*10;i++){
+      const nextX=lastX+100+Math.random()*50; const nextY=lastY+(Math.random()*100-50);
+      terrain.push({x:lastX,y:lastY});
+      if(i%5===0)checkpoints.push(nextX);
+      lastX=nextX; lastY=Math.min(Math.max(nextY,height/2),height-50);
+    }
+    terrain.push({x:lastX+150,y:lastY});
+  }
+
+  function drawTerrain(){
+    ctx.beginPath(); ctx.moveTo(0,height);
+    terrain.forEach(p=>ctx.lineTo(p.x-cameraX,height-p.y+height/2));
+    ctx.lineTo(width,height); ctx.fillStyle="#654321"; ctx.fill();
+  }
+
+  function getTerrainY(x){
+    for(let i=0;i<terrain.length-1;i++){
+      if(x>=terrain[i].x && x<=terrain[i+1].x){
+        const t=(x-terrain[i].x)/(terrain[i+1].x-terrain[i].x);
+        return terrain[i].y*(1-t)+terrain[i+1].y*t;
+      }
+    }
+    return height-100;
+  }
+
+  function updateCar(){
+    if(keys['arrowup']||keys['w']){car.vy-=0.5; if(!engineSound.paused)engineSound.play();}
+    if(keys['arrowleft']||keys['a']){car.vx-=0.3; if(!engineSound.paused)engineSound.play();}
+    if(keys['arrowright']||keys['d']){car.vx+=0.3; if(!engineSound.paused)engineSound.play();}
+    if(keys['e']&&!boostUsed){boostActive=true; boostUsed=true; boostTimer=300;}
+    if(boostActive){car.vx+=0.5; boostTimer--; if(boostTimer<=0)boostActive=false;}
+    car.vy+=gravity; car.x+=car.vx; car.y+=car.vy;
+
+    const terrainY=getTerrainY(car.x+car.width/2);
+    if(car.y+car.height/2>height-terrainY){car.y=height-terrainY-car.height/2; car.vy=0; car.onGround=true;} else{car.onGround=false;}
+    if(car.onGround)car.vx*=0.95; else car.vx*=0.99;
+    car.wheelAngle+=car.vx*0.1;
+    checkpoints.forEach(cp=>{if(car.x>cp)checkpoints.shift();});
+    cameraX=car.x-width/3;
+
+    if(car.x>terrain[terrain.length-1].x-50){
+      level++; boostUsed=false; generateTerrain(level);
+      car.x=100; car.y=300; car.vx=0; car.vy=0; cameraX=0;
+    }
+
+    if(car.y>height){
+      const lastCP=checkpoints.length>0?checkpoints[0]-200:100;
+      car.x=lastCP; car.y=300; car.vx=0; car.vy=0; boostActive=false;
+    }
+  }
+
+  function drawCar(){
+    ctx.save(); ctx.translate(car.x-cameraX,car.y); ctx.fillStyle="#FF0000"; ctx.fillRect(-car.width/2,-car.height/2,car.width,car.height);
+    ctx.fillStyle="#000"; ctx.save(); ctx.translate(-car.width/2,car.height/2); ctx.rotate(car.wheelAngle); ctx.beginPath(); ctx.arc(0,0,10,0,Math.PI*2); ctx.fill(); ctx.restore();
+    ctx.save(); ctx.translate(car.width/2,car.height/2); ctx.rotate(car.wheelAngle); ctx.beginPath(); ctx.arc(0,0,10,0,Math.PI*2); ctx.fill(); ctx.restore(); ctx.restore();
+  }
+
+  function drawUI(){
+    ctx.fillStyle="#000"; ctx.font="20px Arial"; ctx.fillText("Level:"+level,20,30);
+    ctx.fillText("Boost:"+(boostUsed?"Used":"Ready"),20,60);
+    ctx.fillText("Speed:"+Math.round(car.vx*10)+" km/h",20,90);
+    if(boostActive)ctx.fillText("Boost:"+Math.ceil(boostTimer/60)+"s",20,120);
+  }
+
+  function gameLoop(){ctx.clearRect(0,0,width,height); drawTerrain(); updateCar(); drawCar(); drawUI(); requestAnimationFrame(gameLoop);}
+  generateTerrain(level); gameLoop();
+}
+</script>
+</body>
+</html>
